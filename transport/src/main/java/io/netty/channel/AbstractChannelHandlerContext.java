@@ -104,16 +104,14 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
     private final DefaultChannelPipeline pipeline;
     private final String name;
 
-    final EventExecutor executor;
     private ChannelFuture succeededFuture;
 
     private volatile int handlerState = INIT;
 
-    AbstractChannelHandlerContext(DefaultChannelPipeline pipeline, OrderedEventExecutor executor, String name,
+    AbstractChannelHandlerContext(DefaultChannelPipeline pipeline, String name,
                                   Class<? extends ChannelHandler> handlerClass) {
         this.name = ObjectUtil.checkNotNull(name, "name");
         this.pipeline = pipeline;
-        this.executor = executor;
         this.executionMask = mask(handlerClass);
     }
 
@@ -237,11 +235,6 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
     @Override
     public ByteBufAllocator alloc() {
         return channel().config().getAllocator();
-    }
-
-    @Override
-    public EventExecutor executor() {
-        return executor;
     }
 
     @Override
@@ -570,7 +563,7 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
         if (executor.inEventLoop()) {
             findAndInvokeConnect(remoteAddress, localAddress, promise);
         } else {
-            safeExecute(executor, () ->findAndInvokeConnect(remoteAddress, localAddress, promise), promise, null);
+            safeExecute(executor, () -> findAndInvokeConnect(remoteAddress, localAddress, promise), promise, null);
         }
         return promise;
     }
@@ -640,7 +633,7 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
         if (executor.inEventLoop()) {
             findAndInvokeClose(promise);
         } else {
-            executor.execute(() -> findAndInvokeClose(promise));
+            safeExecute(executor, () -> findAndInvokeClose(promise), promise, null);
         }
         return promise;
     }
@@ -805,9 +798,10 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
             throw e;
         }
 
-        final AbstractChannelHandlerContext next = findContextOutbound(flush ? (MASK_WRITE | MASK_FLUSH) : MASK_WRITE);
         EventExecutor executor = executor();
         if (executor.inEventLoop()) {
+            final AbstractChannelHandlerContext next = findContextOutbound(flush ?
+                    (MASK_WRITE | MASK_FLUSH) : MASK_WRITE);
             if (flush) {
                 next.invokeWriteAndFlush(msg, promise);
             } else {
